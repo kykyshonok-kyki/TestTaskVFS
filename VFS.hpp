@@ -34,9 +34,11 @@ private:
 	std::fstream _file;
 	std::fstream _ftable;
 
-	void _SetMod(File *file);
+	void _SetMod(File *file); // Обновление поля mod в VFS_Table
 	File *_FindFile( const char *name ); // Поиск файла по имени
 	File *_TakeFileInfo( uint32_t addr ); // Возврат файла по адресу
+	File *_NewBlock( File* prevf, const char *name ); // Выделение пустого блока
+	uint32_t _TakeBlocksCount(); // Получение количества блоков
 };
 
 }

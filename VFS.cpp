@@ -33,40 +33,36 @@ VFS::~VFS()
 		_ftable.close();
 }
 
-File *VFS::_FindFile( const char *name )
+uint32_t VFS::_TakeBlocksCount() // Получение количества блоков
 {
-	File *res = nullptr;
-	uint32_t b_addr = 0;
 	char buf[5];
-	uint32_t bcnt;
 
-	// Получение количества блоков
 	_ftable.seekg(0);
 	_ftable.read(buf, 4);
 	buf[5] = 0;
-	bcnt = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
+	return (buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3]);
+}
+
+File *VFS::_FindFile( const char *name ) // Поиск файла по имени
+{
+	File *res = nullptr;
+	uint32_t bcnt = _TakeBlocksCount();
 
 	for (uint32_t i = 0; i < bcnt || res == nullptr; ++i)
 	{
-		res = _TakeFileInfo(b_addr);
+		res = _TakeFileInfo(i);
 		if (res->name.compare(name))
 			res = nullptr;
 	}
 	return (res);
 }
 
-File *VFS::_TakeFileInfo( uint32_t addr )
+File *VFS::_TakeFileInfo( uint32_t addr ) // Возврат файла по адресу
 {
 	char buf[FTB_SIZE];
 	File *res;
-	char *end;
-	uint32_t bcnt;
+	uint32_t bcnt = _TakeBlocksCount();
 
-	// Получение количества блоков
-	_ftable.seekg(0);
-	_ftable.read(buf, 4);
-	buf[5] = 0;
-	bcnt = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
 	if (addr > bcnt)
 		return (nullptr);
 
@@ -88,7 +84,7 @@ File *VFS::_TakeFileInfo( uint32_t addr )
 
 
 
-void VFS::_SetMod( File *file )
+void VFS::_SetMod( File *file ) // Обновление поля mod в VFS_Table
 {
 	_ftable.seekp(file->addr * FTB_SIZE + 28);
 	_ftable.write(&file->mod, 1);
@@ -108,6 +104,10 @@ File *VFS::Open( const char *name ) // Открыть файл в readonly ре�
 	res->mod = READM;
 	_SetMod(res);
 	return (res);
+}
+
+File *VFS::_NewBlock( File* prevf, const char *name ) // Выделение пустого блока
+{
 }
 
 File *VFS::Create( const char *name ) // Открыть или создать файл в writeonly режиме. Если нужно, то создать все нужные поддиректории, упомянутые в пути. Вернуть nullptr, если этот файл уже открыт в readonly режиме.
