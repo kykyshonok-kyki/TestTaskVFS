@@ -127,7 +127,9 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 
 void VFS::Close( File *f ) // Закрыть файл
 {
-	
+	f->mod = 0;
+	_SetMod(f);
+	delete (f);
 }
 
 }
