@@ -33,6 +33,7 @@ public:
 private:
 	std::fstream _file;
 	std::fstream _ftable;
+	char zstr[4096];
 
 	void _SetMod(File *file); // Обновление поля mod в VFS_Table
 	File *_FindFile( const char *name ); // Поиск файла по имени
