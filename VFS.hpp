@@ -8,14 +8,19 @@
 
 namespace TestTask
 {
-struct File
+struct Content
 {
-	std::string name;
-	size_t p;
-	uint32_t addr;
+	char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка
 	uint32_t next;
 	uint32_t addr_extra; // Для папок - адрес следующиего файла, для файлов адрес начального блока
-	char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка
+};
+
+struct File
+{
+	Content content;
+	char name[24];
+	size_t p;
+	uint32_t addr;
 };
 
 class VFS : public IVFS
