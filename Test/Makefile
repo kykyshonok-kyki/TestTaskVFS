@@ -1,20 +1,28 @@
-NAME	= vfs_test
-FLAGS	= -Wall -Wextra -Werror -g -fsanitize=address
-INCLUDES= -I../
-SRCS	= ../VFS.cpp test.cpp
-CC		= c++
+NAME_FULL	= vfs_test
+NAME_FUNC	= func_test
+FLAGS		= -Wall -Wextra -Werror -g -fsanitize=address
+INCLUDES	= -I../
+SRCS		= ../VFS.cpp
+FULLTEST	= test.cpp
+FUNCTEST	= function_test.cpp
+CC			= c++
 
-all: $(NAME)
+all: $(NAME_FULL)
 
-$(NAME): $(SRCS)
-	$(CC) $(FLAGS) $(INCLUDES) $(SRCS) -o $(NAME)
+$(NAME_FULL): $(SRCS) $(FULLTEST)
+	$(CC) $(FLAGS) $(INCLUDES) $(SRCS) $(FULLTEST) -o $(NAME_FULL)
+
+func: $(NAME_FUNC)
+
+$(NAME_FUNC): $(SRCS) $(FUNCTEST)
+	$(CC) $(FLAGS) $(INCLUDES) $(SRCS) $(FUNCTEST) -o $(NAME_FUNC)
 
 clean:
 	rm VFS_File VFS_Table ../VFS_Table ../VFS_File
 
 fclean:
-	rm -f $(NAME)
+	rm -f $(NAME_FULL) $(NAME_FUNC)
 
 re: fclean all
 
-.PHONY: all fclean re
+.PHONY: all fclean re func clean

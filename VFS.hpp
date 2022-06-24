@@ -3,6 +3,7 @@
 
 #include "IVFS.hpp"
 #include <string>
+#include <vector>
 #include <fstream>
 #include "stdlib.h"
 
@@ -41,8 +42,7 @@ private:
 	std::fstream _ftable;
 	char zstr[4096];
 
-	// void _SetMod(File *file); // Обновление поля mod в VFS_Table
-	// void _SetFilled( File *f ); // Обновление всего контента (кроме имени файла) в VFS_Table
+	std::vector<std::string> _TrimCStr( const char *str, char delim );
 	void _UpdateBlock( File &f ); // Запись изменений существующего блока в VFS_Table
 	void _ReadFileInfo( File &f, size_t p ); // Чтение изменений блока в существующий объект File
 	File *_FindFile( const char *name ); // Поиск стартового блока файла по имени

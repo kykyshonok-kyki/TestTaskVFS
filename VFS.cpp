@@ -55,6 +55,34 @@ VFS::~VFS()
 		_file.close();
 }
 
+std::vector<std::string> VFS::_TrimCStr( const char *str, char delim )
+{
+	std::vector<std::string> path;
+	const char *ldelim; // Позиция после последнего разделителя
+	char file[24];
+
+	if (*str == '/')
+		++str;
+	ldelim = str;
+	while (*str)
+	{
+		if (*str == delim)
+		{
+			strlcpy(file, ldelim, str - ldelim + 1);
+			if (str - ldelim)
+				path.push_back(file);
+			ldelim = str + 1;
+		}
+		++str;
+	}
+	if (ldelim != str)
+	{
+		strlcpy(file, ldelim, str - ldelim + 1);
+		path.push_back(file);
+	}
+	return (path);
+}
+
 uint32_t VFS::_TakeBlocksCount() // Получение количества блоков
 {
 	std::streampos end;
@@ -114,25 +142,6 @@ File *VFS::_TakeFileInfo( uint32_t addr ) // Возврат файла по ад
 
 	return (res);
 }
-
-// void VFS::_SetMod( File *file ) // Обновление поля mod в VFS_Table
-// {
-// 	std::streampos start, p;
-// 	_ftable.clear();
-// 	_ftable.seekp(0);
-// 	start = _ftable.tellp();
-// 	_ftable.seekp(file->addr * FTB_SIZE + NAME_SIZE + 1);
-// 	p = _ftable.tellp();
-// 	std::cout << p - start << std::endl;
-// 	_ftable.write(&file->content.mod, 1);
-// }
-
-// void VFS::_SetFilled( File *f ) // Обновление поля filled в VFS_Table
-// {
-// 	_ftable.clear();
-// 	_ftable.seekp(f->addr * FTB_SIZE + NAME_SIZE + 1);
-// 	_ftable.write(reinterpret_cast<char *>(&f->content), sizeof(f->content));
-// }
 
 void VFS::_UpdateBlock( File &f ) // Запись изменений существующего блока в VFS_Table
 {
