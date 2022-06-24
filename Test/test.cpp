@@ -24,13 +24,13 @@ std::ostream &operator<<( std::ostream& s, TestTask::Content &c )
 	return (s);
 }
 
-int main()
+void OCWOTest()
 {
 	TestTask::File *vfs_file;
 	TestTask::VFS vfs;
 
 
-	vfs_file = vfs.Open("My_Top_File2");
+	vfs_file = vfs.Open("home/My_Top_File2");
 	if (vfs_file)
 	{
 		std::cout << *vfs_file << std::endl;
@@ -43,17 +43,17 @@ int main()
 	std::cout << "-----------------" << std::endl;
 
 
-	vfs_file = vfs.Create("My_Top_File2");
+	vfs_file = vfs.Create("home/My_Top_File2");
 	
 	if (!vfs_file)
 	{
 		std::cout << "Error: Create: File is not available!" << std::endl;
-		return (0);
+		return ;
 	}
 	char str[4096];
 	memset(str, '\3', 4096);
 	std::cout << "Write: " << vfs.Write(vfs_file, str, 4000) << std::endl;
-	std::cout << "Write: " << vfs.Write(vfs_file, str, 1000) << std::endl;
+	std::cout << "Write: " << vfs.Write(vfs_file, str, 100) << std::endl;
 	std::cout << "-----------------" << std::endl;
 
 	std::cout << *vfs_file << std::endl;
@@ -61,7 +61,7 @@ int main()
 
 	std::cout << "-----------------" << std::endl;
 
-	vfs_file = vfs.Open("My_Top_File2");
+	vfs_file = vfs.Open("home/My_Top_File2");
 	if (vfs_file)
 	{
 		std::cout << *vfs_file << std::endl;
@@ -79,5 +79,84 @@ int main()
 	}
 	else
 		std::cout << "Error: Open: File is not available!" << std::endl;
+}
+
+void FoldersTest()
+{
+	TestTask::File *vfs_file;
+	TestTask::VFS vfs;
+
+	vfs_file = vfs.Create("/home/file1");
+	if (!vfs_file)
+		std::cout << "Error: Create: Cannt create file!" << std::endl;
+	else
+	{
+		char str[4096];
+		memset(str, '\1', 4096);
+		vfs.Write(vfs_file, str, 4096);
+		std::cout << *vfs_file << std::endl << "------------" << std::endl;
+		vfs.Close(vfs_file);
+	}
+
+
+	vfs_file = vfs.Create("/file2");
+	if (!vfs_file)
+		std::cout << "Error: Create: Cannt create file!" << std::endl;
+	else
+	{
+		char str[4096];
+		memset(str, '\2', 4096);
+		vfs.Write(vfs_file, str, 4096);
+		std::cout << *vfs_file << std::endl << "------------" << std::endl;
+		vfs.Close(vfs_file);
+	}
+
+
+	vfs_file = vfs.Create("/test/file3");
+	if (!vfs_file)
+		std::cout << "Error: Create: Cannt create file!" << std::endl;
+	else
+	{
+		char str[4096];
+		memset(str, '\3', 4096);
+		vfs.Write(vfs_file, str, 4096);
+		std::cout << *vfs_file << std::endl << "------------" << std::endl;
+		vfs.Close(vfs_file);
+	}
+
+
+	vfs_file = vfs.Open("/home/file1");
+	if (!vfs_file)
+		std::cout << "Error: Open: Cannt open file!" << std::endl;
+	else
+	{
+		std::cout << *vfs_file << std::endl << "------------" << std::endl;
+		vfs.Close(vfs_file);
+	}
+
+	vfs_file = vfs.Open("/file2");
+	if (!vfs_file)
+		std::cout << "Error: Open: Cannt open file!" << std::endl;
+	else
+	{
+		std::cout << *vfs_file << std::endl << "------------" << std::endl;
+		vfs.Close(vfs_file);
+	}
+
+	vfs_file = vfs.Open("/test/file3");
+	if (!vfs_file)
+		std::cout << "Error: Open: Cannt open file!" << std::endl;
+	else
+	{
+		std::cout << *vfs_file << std::endl;
+		vfs.Close(vfs_file);
+	}
+}
+
+int main()
+{
+	// OCWOTest();
+	FoldersTest();
+
 	return (0);
 }

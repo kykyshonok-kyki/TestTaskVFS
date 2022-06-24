@@ -46,6 +46,8 @@ private:
 	void _UpdateBlock( File &f ); // Запись изменений существующего блока в VFS_Table
 	void _ReadFileInfo( File &f, size_t p ); // Чтение изменений блока в существующий объект File
 	File *_FindFile( const char *name ); // Поиск стартового блока файла по имени
+	File *_FindLastFolder( std::vector<std::string> &path,
+						std::vector<std::string>::iterator &it ); // Поиск последнего файла существующей папки пути
 	File *_TakeFileInfo( uint32_t addr ); // Возврат файла по адресу
 	void _NewBlock( File **f, const char *name ); // Выделение пустого блока
 	void _MoveBlock( File *f, bool create_mod ); // Переход к следующему блоку

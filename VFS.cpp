@@ -10,6 +10,7 @@
 #define WRITEM 0x10
 #define FOLDERM 0xFF
 #define CONTENTM 0xF0
+#define SEARCHERRM 0xF
 
 namespace TestTask
 {
@@ -17,18 +18,18 @@ VFS::VFS()
 {
 	// Попытка открыть файлы, если не получилось, создать, закрыть, открыть в нужном режиме
 	_file.open("VFS_File", std::ios::out | std::ios::in | std::ios::binary);
-	if (!_file.is_open())
+	_ftable.open("VFS_Table", std::ios::out | std::ios::in | std::ios::binary);
+	if (!_file.is_open() || !_ftable.is_open())
 	{
 		_file.open("VFS_File", std::ios::app);
 		_file.close();
 		_file.open("VFS_File", std::ios::out | std::ios::in | std::ios::binary);
-	}
-	_ftable.open("VFS_Table", std::ios::out | std::ios::in | std::ios::binary);
-	if (!_ftable.is_open())
-	{
 		_ftable.open("VFS_Table", std::ios::app);
 		_ftable.close();
 		_ftable.open("VFS_Table", std::ios::out | std::ios::in | std::ios::binary);
+		File *f = nullptr;
+		_NewBlock(&f, "");
+		delete (f);
 	}
 
 	// Если файлы не открыты, проброс исключения
@@ -95,26 +96,93 @@ uint32_t VFS::_TakeBlocksCount() // Получение количества бл
 
 File *VFS::_FindFile( const char *name ) // Поиск стартового блока файла по имени
 {
-	File *res = nullptr;
-	uint32_t bcnt = _TakeBlocksCount();
+	std::vector<std::string> path = _TrimCStr(name, '/');
 
-	for (uint32_t i = 0; i < bcnt && res == nullptr; ++i)
+	if (path.size() == 0)
+		return (nullptr);
+
+	uint32_t bcnt = _TakeBlocksCount();
+	std::vector<std::string>::iterator it = path.begin();
+	std::vector<std::string>::iterator end = path.end();
+	File *res = new File;
+
+	res->addr = 1;
+	while (it != end)
 	{
-		// Прохождение по всем записям пока не будет найден нужный файл или записи не закончатся
-		res = _TakeFileInfo(i);
-		if (!res)
-			return (nullptr);
-		if (res->content.mod == CONTENTM || res->content.mod == FOLDERM)
+		while (res->addr != 0 && res->addr < bcnt)
 		{
-			delete (res);
-			res = nullptr;
+			// Прохождение записям пока не будет найден нужный файл или подходящие записи не закончатся
+			_ReadFileInfo(*res, 0);
+			if (res->content.mod != CONTENTM && strcmp(res->name, it->c_str()) == 0) // Файл подошел
+			{
+				if (it + 1 == end) // Найден последний файл пути
+					return (res);
+				else if (res->content.mod != FOLDERM) // Не последний файл пути, а текущий найденный оказался не папкой
+				{
+					delete (res);
+					return (nullptr);
+				}
+				res->addr = res->content.next; // Это папка -> вход внутрь
+				break;
+			} else
+				res->addr = res->content.addr_extra; 
 		}
-		else if (strcmp(res->name, name))
-		{
-			delete (res);
-			res = nullptr;
-		}
+		if (res->addr == 0)
+			break;
+		++it;
 	}
+	delete (res);
+	return (nullptr);
+}
+
+File *VFS::_FindLastFolder( std::vector<std::string> &path,
+							std::vector<std::string>::iterator &it ) // Поиск последнего файла существующей папки пути
+{
+	if (path.size() == 0)
+		return (nullptr);
+
+	uint32_t bcnt = _TakeBlocksCount();
+	std::vector<std::string>::iterator end = path.end();
+	File *res = new File;
+
+	res->addr = 1;
+	if (bcnt != 1)
+	{
+		while (it != end)
+		{
+			while (res->addr != 0 && res->addr < bcnt)
+			{
+				// Прохождение по всем записям пока не будет найден нужный файл или подходящие записи не закончатся
+				_ReadFileInfo(*res, 0);
+				if (res->content.mod != CONTENTM && strcmp(res->name, it->c_str()) == 0) // Файл подошел
+				{
+					if (it + 1 == end) // Найден последний файл пути
+						return (res);
+					else if (res->content.mod != FOLDERM) // Не последний файл пути, а текущий найденный оказался не папкой
+					{
+						delete (res);
+						return (nullptr);
+					}
+					res->addr = res->content.next; // Это папка -> вход внутрь
+					break;
+				} else
+				{
+					if (res->content.addr_extra == 0) // Последний файл папки и он не папка
+						return (res);
+					res->addr = res->content.addr_extra;
+				}
+			}
+			if (res->addr == 0)
+				break;
+			++it;
+		}
+		--it;
+	}
+	delete (res);
+	res = 0;
+	_NewBlock(&res, it->c_str());
+	res->content.mod = SEARCHERRM;
+	++it;
 	return (res);
 }
 
@@ -179,12 +247,16 @@ void VFS::_NewBlock( File **f, const char *name ) // Выделение пуст
 		strcpy((*f)->name, name);
 		(*f)->content.next = 0;
 		(*f)->content.mod = 0;
-		(*f)->content.addr_extra = lblock;
+		(*f)->content.addr_extra = 0;
 		(*f)->content.filled = 0;
 		(*f)->p = 0;
 	} else
 	{
-		(*f)->content.mod = CONTENTM;
+		if ((*f)->content.mod != CONTENTM)
+		{
+			(*f)->content.addr_extra = (*f)->addr;
+			(*f)->content.mod = CONTENTM;
+		}
 		(*f)->content.filled = 0;
 		(*f)->p = 0;
 	}
@@ -225,10 +297,17 @@ File *VFS::Create( const char *name ) // Открыть или создать ф
 	if (strlen(name) > NAME_SIZE)
 		return (nullptr);
 
-	File *f;
+	File *f = nullptr;
+	std::vector<std::string> path = _TrimCStr(name, '/');
 
-	f = _FindFile(name);
-	if (f) // Файл существует
+	if (path.size() == 0)
+		return (nullptr);
+
+	std::vector<std::string>::iterator it = path.begin();
+	std::vector<std::string>::iterator end = path.end();
+
+	f = _FindLastFolder(path, it);
+	if (f && it + 1 == end && !strcmp(f->name, it->c_str())) // Файл существует
 	{
 		if (f->content.mod != 0)
 			return (nullptr);
@@ -240,7 +319,29 @@ File *VFS::Create( const char *name ) // Открыть или создать ф
 		}
 	} else // Файл не существует
 	{
-		_NewBlock(&f, name);
+		File *nf = nullptr;
+
+		if (!f) // В пути попался файл
+			return (nullptr);
+		// Создается запись как папка и редактируется addr_extra предыдущего файла
+		while (it != end)
+		{
+			_NewBlock(&nf, it->c_str());
+			if (f->content.mod == SEARCHERRM)
+			{
+				f->content.mod = FOLDERM;
+				f->content.next = nf->addr;
+			}
+			else
+				f->content.addr_extra = nf->addr;
+			_UpdateBlock(*f);
+			delete (f);
+			nf->content.mod = SEARCHERRM;
+			f = nf;
+			nf = nullptr;
+			++it;
+		}
+		// Последний файл пути - файл, проставляется режим открыт для записи
 		f->content.mod = WRITEM;
 		_UpdateBlock(*f);
 		return (f);
@@ -261,7 +362,7 @@ size_t VFS::Read( File *f, char *buff, size_t len ) // Прочитать дан
 
 	// Чтение данных
 	_file.clear();
-	_file.seekg(f->addr + f->p);
+	_file.seekg(f->addr * FB_SIZE + f->p);
 	_file.read(buff, len);
 
 	// Установка указателя и переход к новому блоку если это необходимо
@@ -284,7 +385,7 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 
 	// Запись данных
 	_file.clear();
-	_file.seekp(f->addr + f->p);
+	_file.seekp(f->addr * FB_SIZE + f->p);
 	start = _file.tellp();
 	_file.write(buff, len);
 	res = _file.tellp() - start;
