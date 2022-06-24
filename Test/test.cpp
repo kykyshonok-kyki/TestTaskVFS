@@ -153,10 +153,48 @@ void FoldersTest()
 	}
 }
 
+void ReadTest()
+{
+	TestTask::File *vfs_file;
+	TestTask::VFS vfs;
+	char str[4096];
+
+	memset(str, 'a', 4096);
+
+	vfs_file = vfs.Create("/text");
+
+	// 1 блок
+	vfs.Write(vfs_file, str, 100);
+	memset(str, 'b', 4096);
+	vfs.Write(vfs_file, str, 10000);
+	// 2 блок
+	memset(str, 'a', 20);
+	vfs.Write(vfs_file, str, 20);
+	memset(str, 'c', 4000);
+	vfs.Write(vfs_file, str, 4000);
+	memset(str, 'f', 4000);
+	vfs.Write(vfs_file, str, 4000);
+	// 3 блок
+	strcpy(str, "Hello!!!!!!!!!!!!!");
+	vfs.Write(vfs_file, str, 10);
+
+	vfs.Close(vfs_file);
+
+	vfs_file = vfs.Open("/text");
+	std::cout << vfs.Read(vfs_file, str, 200) << std::endl;
+	str[200] = 0;
+	std::cout << vfs.Read(vfs_file, str, 5000) << std::endl;
+	std::cout << vfs.Read(vfs_file, str, 5000) << std::endl;
+	str[vfs.Read(vfs_file, str, 200)] = 0;
+	std::cout << str << std::endl;
+	vfs.Close(vfs_file);
+}
+
 int main()
 {
 	// OCWOTest();
-	FoldersTest();
+	// FoldersTest();
+	ReadTest();
 
 	return (0);
 }

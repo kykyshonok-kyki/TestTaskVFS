@@ -252,6 +252,9 @@ void VFS::_NewBlock( File **f, const char *name ) // Выделение пуст
 		(*f)->p = 0;
 	} else
 	{
+		(*f)->content.next = lblock;
+		_UpdateBlock(**f);
+		(*f)->content.next = 0;
 		if ((*f)->content.mod != CONTENTM)
 		{
 			(*f)->content.addr_extra = (*f)->addr;
@@ -352,7 +355,15 @@ size_t VFS::Read( File *f, char *buff, size_t len ) // Прочитать дан
 {
 	if (!f->addr)
 		return (0);
-	if (f->content.mod != READM)
+	if (f->content.mod == CONTENTM) // Если текущий блок - продолжение, режим файла смотрится в главном блоке
+	{
+		File *nf = new File;
+		nf->addr = f->content.addr_extra;
+		_ReadFileInfo(*nf, 0);
+		if (nf->content.mod != READM)
+			return (0);
+	}
+	else if (f->content.mod != READM)
 		return (0);
 
 	if (len > FB_SIZE - f->p)
@@ -377,7 +388,15 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 	std::streampos start;
 	size_t res;
 
-	if (f->content.mod != WRITEM)
+	if (f->content.mod == CONTENTM) // Если текущий блок - продолжение, режим файла смотрится в главном блоке
+	{
+		File *nf = new File;
+		nf->addr = f->content.addr_extra;
+		_ReadFileInfo(*nf, 0);
+		if (nf->content.mod != WRITEM)
+			return (0);
+	}
+	else if (f->content.mod != WRITEM)
 		return (0);
 
 	if (len > FB_SIZE - f->p)
