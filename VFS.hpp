@@ -10,7 +10,8 @@ namespace TestTask
 {
 struct Content
 {
-	char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка
+	unsigned char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка
+	unsigned int filled;
 	uint32_t next;
 	uint32_t addr_extra; // Для папок - адрес следующиего файла, для файлов адрес начального блока
 };
@@ -40,10 +41,14 @@ private:
 	std::fstream _ftable;
 	char zstr[4096];
 
-	void _SetMod(File *file); // Обновление поля mod в VFS_Table
-	File *_FindFile( const char *name ); // Поиск файла по имени
+	// void _SetMod(File *file); // Обновление поля mod в VFS_Table
+	// void _SetFilled( File *f ); // Обновление всего контента (кроме имени файла) в VFS_Table
+	void _UpdateBlock( File &f ); // Запись изменений существующего блока в VFS_Table
+	void _ReadFileInfo( File &f, size_t p ); // Чтение изменений блока в существующий объект File
+	File *_FindFile( const char *name ); // Поиск стартового блока файла по имени
 	File *_TakeFileInfo( uint32_t addr ); // Возврат файла по адресу
-	File *_NewBlock( File* prevf, const char *name ); // Выделение пустого блока
+	void _NewBlock( File **f, const char *name ); // Выделение пустого блока
+	void _MoveBlock( File *f, bool create_mod ); // Переход к следующему блоку
 	uint32_t _TakeBlocksCount(); // Получение количества блоков
 };
 

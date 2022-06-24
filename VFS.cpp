@@ -2,7 +2,7 @@
 #include <iostream>
 #include <unistd.h>
 
-#define FTB_SIZE 32 // При изменении важно проверить методы меняющие данные
+#define FTB_SIZE 39
 #define FB_SIZE 4096
 #define NAME_SIZE 23
 
@@ -65,7 +65,7 @@ uint32_t VFS::_TakeBlocksCount() // Получение количества бл
 	return (end / FTB_SIZE);
 }
 
-File *VFS::_FindFile( const char *name ) // Поиск файла по имени
+File *VFS::_FindFile( const char *name ) // Поиск стартового блока файла по имени
 {
 	File *res = nullptr;
 	uint32_t bcnt = _TakeBlocksCount();
@@ -76,10 +76,28 @@ File *VFS::_FindFile( const char *name ) // Поиск файла по имен�
 		res = _TakeFileInfo(i);
 		if (!res)
 			return (nullptr);
-		if (strcmp(res->name, name))
+		if (res->content.mod == CONTENTM || res->content.mod == FOLDERM)
+		{
+			delete (res);
 			res = nullptr;
+		}
+		else if (strcmp(res->name, name))
+		{
+			delete (res);
+			res = nullptr;
+		}
 	}
 	return (res);
+}
+
+void VFS::_ReadFileInfo( File &f, size_t p ) // Чтение изменений блока в существующий объект File
+{
+	_ftable.clear();
+	_ftable.seekg(f.addr * (NAME_SIZE + sizeof(f.content)));
+	_ftable.read(f.name, NAME_SIZE);
+	f.name[NAME_SIZE] = 0;
+	_ftable.read(reinterpret_cast<char *>(&f.content), sizeof(f.content));
+	f.p = p;
 }
 
 File *VFS::_TakeFileInfo( uint32_t addr ) // Возврат файла по адресу
@@ -91,56 +109,83 @@ File *VFS::_TakeFileInfo( uint32_t addr ) // Возврат файла по ад
 	if (addr >= bcnt)
 		return (nullptr);
 
-	// Поиск и чтение блока
-	_ftable.clear();
-	_ftable.seekp(addr * FTB_SIZE);
-	_ftable.read(res->name, NAME_SIZE);
-	res->name[NAME_SIZE] = 0;
-	_ftable.read(reinterpret_cast<char *>(&res->content), sizeof(res->content));
 	res->addr = addr;
-	res->p = 0;
+	_ReadFileInfo(*res, 0);
 
 	return (res);
 }
 
-void VFS::_SetMod( File *file ) // Обновление поля mod в VFS_Table
+// void VFS::_SetMod( File *file ) // Обновление поля mod в VFS_Table
+// {
+// 	std::streampos start, p;
+// 	_ftable.clear();
+// 	_ftable.seekp(0);
+// 	start = _ftable.tellp();
+// 	_ftable.seekp(file->addr * FTB_SIZE + NAME_SIZE + 1);
+// 	p = _ftable.tellp();
+// 	std::cout << p - start << std::endl;
+// 	_ftable.write(&file->content.mod, 1);
+// }
+
+// void VFS::_SetFilled( File *f ) // Обновление поля filled в VFS_Table
+// {
+// 	_ftable.clear();
+// 	_ftable.seekp(f->addr * FTB_SIZE + NAME_SIZE + 1);
+// 	_ftable.write(reinterpret_cast<char *>(&f->content), sizeof(f->content));
+// }
+
+void VFS::_UpdateBlock( File &f ) // Запись изменений существующего блока в VFS_Table
 {
 	_ftable.clear();
-	_ftable.seekp(file->addr * FTB_SIZE + NAME_SIZE + 1);
-	_ftable.write(&file->content.mod, 1);
+	_ftable.seekp(f.addr * (NAME_SIZE + sizeof(f.content)));
+	_ftable.write(f.name, NAME_SIZE);
+	_ftable.write(reinterpret_cast<char *>(&f.content), sizeof(f.content));
 }
 
-File *VFS::_NewBlock( File* prevf, const char *name ) // Выделение пустого блока
+void VFS::_MoveBlock( File *f, bool create_mod ) // Переход к следующему блоку если такой есть. Если нет, он создается только в create_mod
 {
-	File *res;
 	uint32_t lblock = _TakeBlocksCount();
 
-	// Обновление информации о блоке в res
-	if (!prevf)
+	if (!f || f->addr > lblock)
+		return;
+
+	if (f->content.next) // Если есть сл. блок, обновление содержимого структуры на него
 	{
-		res = new File();
-		strcpy(res->name, name);
-		res->content.next = 0;
-		res->content.mod = 0;
-		res->content.addr_extra = lblock;
-		res->p = 0;
+		f->addr = f->content.next;
+		_ReadFileInfo(*f, 0);
+	}
+	else if (create_mod) // Блока нет. Создается новый, если create_mod = true
+		_NewBlock(&f, f->name);
+}
+
+void VFS::_NewBlock( File **f, const char *name ) // Выделение пустого блока
+{
+	uint32_t lblock = _TakeBlocksCount();
+
+	// Обновление информации о блоке
+	if (!*f)
+	{
+		*f = new File();
+		bzero((*f)->name, NAME_SIZE + 1);
+		strcpy((*f)->name, name);
+		(*f)->content.next = 0;
+		(*f)->content.mod = 0;
+		(*f)->content.addr_extra = lblock;
+		(*f)->content.filled = 0;
+		(*f)->p = 0;
 	} else
 	{
-		res = prevf;
-		res->content.mod = CONTENTM;
-		res->p = 0;
+		(*f)->content.mod = CONTENTM;
+		(*f)->content.filled = 0;
+		(*f)->p = 0;
 	}
-	res->addr = lblock;
-
-	// Запись из res в VFS_Table
-	_ftable.write(res->name, NAME_SIZE);
-	_ftable.write(reinterpret_cast<char *>(&res->content), sizeof(res->content));
+	(*f)->addr = lblock;
+	_UpdateBlock(**f);
 
 	// Запись NULL в VFS_File
 	_file.clear();
-	_file.seekp(res->addr * FB_SIZE);
+	_file.seekp((*f)->addr * FB_SIZE);
 	_file.write(zstr, 4096);
-	return (res);
 }
 
 File *VFS::Open( const char *name ) // Открыть файл в readonly режиме. Если нет такого файла или же он открыт во writeonly режиме - вернуть nullptr
@@ -162,7 +207,7 @@ File *VFS::Open( const char *name ) // Открыть файл в readonly ре�
 
 	// Файл не открыт и существует, т.к. прошлыми if-ами отсеились прочие условия
 	res->content.mod = READM;
-	_SetMod(res);
+	_UpdateBlock(*res);
 	return (res);
 }
 
@@ -174,46 +219,86 @@ File *VFS::Create( const char *name ) // Открыть или создать ф
 	File *f;
 
 	f = _FindFile(name);
-	if (f)
+	if (f) // Файл существует
 	{
-		// Файл существует
-		if (f->content.mod != WRITEM && f->content.mod != 0)
+		if (f->content.mod != 0)
 			return (nullptr);
-		else if (f->content.mod == WRITEM)
-			return (f);
 		else
 		{
-			// Смена режима
+			f->content.mod = WRITEM;
+			_UpdateBlock(*f);
 			return (f);
 		}
 	} else // Файл не существует
-		return (_NewBlock(nullptr, name));
+	{
+		_NewBlock(&f, name);
+		f->content.mod = WRITEM;
+		_UpdateBlock(*f);
+		return (f);
+	}
 }
 
 size_t VFS::Read( File *f, char *buff, size_t len ) // Прочитать данные из файла. Возвращаемое значение - сколько реально байт удалось прочитать
 {
-	// if (len > FB_SIZE - f->p)
-	// 	len = FB_SIZE - f->p;
-	// _file.clear();
-	// _file.seekg(f->addr + f->p);
-	// _file.read(buff, len);
-	// if (f->p == FB_SIZE)
-	// 	return (_file.gcount());
-	return (0);
+	if (!f->addr)
+		return (0);
+	if (f->content.mod != READM)
+		return (0);
+
+	if (len > FB_SIZE - f->p)
+		len = FB_SIZE - f->p;
+	if (len > f->content.filled - f->p)
+		len = f->content.filled - f->p;
+
+	// Чтение данных
+	_file.clear();
+	_file.seekg(f->addr + f->p);
+	_file.read(buff, len);
+
+	// Установка указателя и переход к новому блоку если это необходимо
+	f->p += _file.gcount();
+	if (f->p == FB_SIZE)
+		_MoveBlock(f, false);
+	return (_file.gcount());
 }
 
 size_t VFS::Write( File *f, char *buff, size_t len ) // Записать данные в файл. Возвращаемое значение - сколько реально байт удалось записать
 {
-	(void)f;
-	(void)buff;
-	(void)len;
-	return (0);
+	std::streampos start;
+	size_t res;
+
+	if (f->content.mod != WRITEM)
+		return (0);
+
+	if (len > FB_SIZE - f->p)
+		len = FB_SIZE - f->p;
+
+	// Запись данных
+	_file.clear();
+	_file.seekp(f->addr + f->p);
+	start = _file.tellp();
+	_file.write(buff, len);
+	res = _file.tellp() - start;
+
+	// Установка указателей и переход к новому блоку если это необходимо
+	f->content.filled += res;
+	_UpdateBlock(*f);
+	f->p += res;
+	if (f->p == FB_SIZE)
+		_MoveBlock(f, true);
+	return (res);
 }
 
 void VFS::Close( File *f ) // Закрыть файл
 {
+	if (f->content.mod == CONTENTM)
+	{
+		// Контентный блок, поэтому адрес устанавливается на родителя и обновляется информация
+		f->addr = f->content.addr_extra;
+		_ReadFileInfo(*f, 0);
+	}
 	f->content.mod = 0;
-	_SetMod(f);
+	_UpdateBlock(*f);
 	delete (f);
 }
 
