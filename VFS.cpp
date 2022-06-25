@@ -14,6 +14,18 @@
 
 namespace TestTask
 {
+Content::Content() {}
+
+File::File()
+{
+	pthread_mutex_init(&_m_struct, NULL);
+}
+
+File::~File()
+{
+	pthread_mutex_destroy(&_m_struct);
+}
+
 VFS::VFS()
 {
 	// Попытка открыть файлы, если не получилось, создать, закрыть, открыть в нужном режиме
@@ -45,6 +57,8 @@ VFS::VFS()
 	{
 		throw std::logic_error("Cannt open VFS_File");
 	}
+	pthread_mutex_init(&_m_file, NULL);
+	pthread_mutex_init(&_m_table, NULL);
 	bzero(zstr, 4096);
 }
 
@@ -54,6 +68,8 @@ VFS::~VFS()
 		_ftable.close();
 	if (_file.is_open())
 		_file.close();
+	pthread_mutex_destroy(&_m_file);
+	pthread_mutex_destroy(&_m_table);
 }
 
 std::vector<std::string> VFS::_TrimCStr( const char *str, char delim )
@@ -88,9 +104,11 @@ uint32_t VFS::_TakeBlocksCount() // Получение количества бл
 {
 	std::streampos end;
 
+	pthread_mutex_lock(&_m_table);
 	_ftable.clear();
 	_ftable.seekg(0, std::ios::end);
 	end = _ftable.tellg();
+	pthread_mutex_unlock(&_m_table);
 	return (end / FTB_SIZE);
 }
 
@@ -188,11 +206,13 @@ File *VFS::_FindLastFolder( std::vector<std::string> &path,
 
 void VFS::_ReadFileInfo( File &f, size_t p ) // Чтение изменений блока в существующий объект File
 {
+	pthread_mutex_lock(&_m_table);
 	_ftable.clear();
 	_ftable.seekg(f.addr * (NAME_SIZE + sizeof(f.content)));
 	_ftable.read(f.name, NAME_SIZE);
-	f.name[NAME_SIZE] = 0;
 	_ftable.read(reinterpret_cast<char *>(&f.content), sizeof(f.content));
+	pthread_mutex_unlock(&_m_table);
+	f.name[NAME_SIZE] = 0;
 	f.p = p;
 }
 
@@ -213,10 +233,12 @@ File *VFS::_TakeFileInfo( uint32_t addr ) // Возврат файла по ад
 
 void VFS::_UpdateBlock( File &f ) // Запись изменений существующего блока в VFS_Table
 {
+	pthread_mutex_lock(&_m_table);
 	_ftable.clear();
 	_ftable.seekp(f.addr * (NAME_SIZE + sizeof(f.content)));
 	_ftable.write(f.name, NAME_SIZE);
 	_ftable.write(reinterpret_cast<char *>(&f.content), sizeof(f.content));
+	pthread_mutex_unlock(&_m_table);
 }
 
 void VFS::_MoveBlock( File *f, bool create_mod ) // Переход к следующему блоку если такой есть. Если нет, он создается только в create_mod
@@ -267,9 +289,11 @@ void VFS::_NewBlock( File **f, const char *name ) // Выделение пуст
 	_UpdateBlock(**f);
 
 	// Запись NULL в VFS_File
+	pthread_mutex_lock(&_m_file);
 	_file.clear();
 	_file.seekp((*f)->addr * FB_SIZE);
 	_file.write(zstr, 4096);
+	pthread_mutex_unlock(&_m_file);
 }
 
 File *VFS::Open( const char *name ) // Открыть файл в readonly режиме. Если нет такого файла или же он открыт во writeonly режиме - вернуть nullptr
@@ -353,18 +377,32 @@ File *VFS::Create( const char *name ) // Открыть или создать ф
 
 size_t VFS::Read( File *f, char *buff, size_t len ) // Прочитать данные из файла. Возвращаемое значение - сколько реально байт удалось прочитать
 {
+	pthread_mutex_lock(&f->_m_struct);
+	size_t read = 0;
+
 	if (!f->addr)
+	{
+		pthread_mutex_unlock(&f->_m_struct);
 		return (0);
+	}
 	if (f->content.mod == CONTENTM) // Если текущий блок - продолжение, режим файла смотрится в главном блоке
 	{
 		File *nf = new File;
 		nf->addr = f->content.addr_extra;
 		_ReadFileInfo(*nf, 0);
 		if (nf->content.mod != READM)
+		{
+			pthread_mutex_unlock(&f->_m_struct);
+			delete (nf);
 			return (0);
+		}
+		delete (nf);
 	}
 	else if (f->content.mod != READM)
+	{
+		pthread_mutex_unlock(&f->_m_struct);
 		return (0);
+	}
 
 	if (len > FB_SIZE - f->p)
 		len = FB_SIZE - f->p;
@@ -372,19 +410,24 @@ size_t VFS::Read( File *f, char *buff, size_t len ) // Прочитать дан
 		len = f->content.filled - f->p;
 
 	// Чтение данных
+	pthread_mutex_lock(&_m_file);
 	_file.clear();
 	_file.seekg(f->addr * FB_SIZE + f->p);
 	_file.read(buff, len);
+	read = _file.gcount();
+	pthread_mutex_unlock(&_m_file);
 
 	// Установка указателя и переход к новому блоку если это необходимо
-	f->p += _file.gcount();
+	f->p += read;
 	if (f->p == FB_SIZE)
 		_MoveBlock(f, false);
-	return (_file.gcount());
+	pthread_mutex_unlock(&f->_m_struct);
+	return (read);
 }
 
 size_t VFS::Write( File *f, char *buff, size_t len ) // Записать данные в файл. Возвращаемое значение - сколько реально байт удалось записать
 {
+	pthread_mutex_lock(&f->_m_struct);
 	std::streampos start;
 	size_t res;
 
@@ -394,20 +437,28 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 		nf->addr = f->content.addr_extra;
 		_ReadFileInfo(*nf, 0);
 		if (nf->content.mod != WRITEM)
+		{
+			pthread_mutex_unlock(&f->_m_struct);
 			return (0);
+		}
 	}
 	else if (f->content.mod != WRITEM)
+	{
+		pthread_mutex_unlock(&f->_m_struct);
 		return (0);
+	}
 
 	if (len > FB_SIZE - f->p)
 		len = FB_SIZE - f->p;
 
 	// Запись данных
+	pthread_mutex_lock(&_m_file);
 	_file.clear();
 	_file.seekp(f->addr * FB_SIZE + f->p);
 	start = _file.tellp();
 	_file.write(buff, len);
 	res = _file.tellp() - start;
+	pthread_mutex_unlock(&_m_file);
 
 	// Установка указателей и переход к новому блоку если это необходимо
 	f->content.filled += res;
@@ -415,11 +466,13 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 	f->p += res;
 	if (f->p == FB_SIZE)
 		_MoveBlock(f, true);
+	pthread_mutex_unlock(&f->_m_struct);
 	return (res);
 }
 
 void VFS::Close( File *f ) // Закрыть файл
 {
+	pthread_mutex_lock(&f->_m_struct);
 	if (f->content.mod == CONTENTM)
 	{
 		// Контентный блок, поэтому адрес устанавливается на родителя и обновляется информация
@@ -428,6 +481,7 @@ void VFS::Close( File *f ) // Закрыть файл
 	}
 	f->content.mod = 0;
 	_UpdateBlock(*f);
+	pthread_mutex_unlock(&f->_m_struct);
 	delete (f);
 }
 

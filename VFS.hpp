@@ -11,10 +11,14 @@ namespace TestTask
 {
 struct Content
 {
-	unsigned char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка
+	unsigned char mod; // 0 - закрыт, 0x1 - открыт на чтение, 0x10 - открыт на запись, 0xFF - папка, 0xF - флаг для поиска (вурнулся блок, но не искомый), 0xF0 - не стартовый блок файла
 	unsigned int filled;
 	uint32_t next;
 	uint32_t addr_extra; // Для папок - адрес следующиего файла, для файлов адрес начального блока
+
+	Content();
+	Content( const Content &other ) = delete;
+	Content &operator=( const Content &other ) = delete;
 };
 
 struct File
@@ -23,6 +27,12 @@ struct File
 	char name[24];
 	size_t p;
 	uint32_t addr;
+	pthread_mutex_t _m_struct;
+
+	File( const File &other ) = delete;
+	File &operator=( const File &other ) = delete;
+	File();
+	~File();
 };
 
 class VFS : public IVFS
@@ -41,6 +51,8 @@ private:
 	std::fstream _file;
 	std::fstream _ftable;
 	char zstr[4096];
+	pthread_mutex_t	_m_file;
+	pthread_mutex_t	_m_table;
 
 	std::vector<std::string> _TrimCStr( const char *str, char delim );
 	void _UpdateBlock( File &f ); // Запись изменений существующего блока в VFS_Table

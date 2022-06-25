@@ -1,6 +1,6 @@
 NAME_FULL	= vfs_test
 NAME_FUNC	= func_test
-FLAGS		= -Wall -Wextra -Werror -g -fsanitize=address
+FLAGS		= -Wall -Wextra -Werror -g -fsanitize=address -std=c++11
 INCLUDES	= -I../
 SRCS		= ../VFS.cpp
 FULLTEST	= test.cpp
