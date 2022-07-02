@@ -337,7 +337,10 @@ File *VFS::Create( const char *name ) // Открыть или создать ф
 	if (f && it + 1 == end && !strcmp(f->name, it->c_str())) // Файл существует
 	{
 		if (f->content.mod != 0)
+		{
+			delete (f);
 			return (nullptr);
+		}
 		else
 		{
 			f->content.mod = WRITEM;
@@ -439,8 +442,10 @@ size_t VFS::Write( File *f, char *buff, size_t len ) // Записать дан�
 		if (nf->content.mod != WRITEM)
 		{
 			pthread_mutex_unlock(&f->_m_struct);
+			delete (nf);
 			return (0);
 		}
+		delete (nf);
 	}
 	else if (f->content.mod != WRITEM)
 	{
