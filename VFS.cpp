@@ -127,9 +127,9 @@ File *VFS::_FindFile( const char *name ) // Поиск стартового бл
 	res->addr = 1;
 	while (it != end)
 	{
+		// Прохождение по записям пока не будет найден нужный файл или подходящие записи не закончатся
 		while (res->addr != 0 && res->addr < bcnt)
 		{
-			// Прохождение записям пока не будет найден нужный файл или подходящие записи не закончатся
 			_ReadFileInfo(*res, 0);
 			if (res->content.mod != CONTENTM && strcmp(res->name, it->c_str()) == 0) // Файл подошел
 			{
@@ -168,9 +168,9 @@ File *VFS::_FindLastFolder( std::vector<std::string> &path,
 	{
 		while (it != end)
 		{
+			// Прохождение по записям пока не будет найден нужный файл или подходящие записи не закончатся
 			while (res->addr != 0 && res->addr < bcnt)
 			{
-				// Прохождение по всем записям пока не будет найден нужный файл или подходящие записи не закончатся
 				_ReadFileInfo(*res, 0);
 				if (res->content.mod != CONTENTM && strcmp(res->name, it->c_str()) == 0) // Файл подошел
 				{
